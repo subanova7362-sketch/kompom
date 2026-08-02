@@ -50,33 +50,49 @@ function formatAmount(amount) {
 function findUtilityPayments(text) {
     const payments = [];
     const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+    const utilityLabels = [
+        "Оплата услуг mBank.ZhKU",
+        "Оплата услуг mBank.ZHKH",
+        "Оплата услуг iBank.ZhKU",
+        "Оплата услуг iBank.ZHKH"
+    ];
 
     for (let i = 0; i < lines.length; i++) {
-        if ([
-            "Оплата услуг mBank.ZhKU",
-            "Оплата услуг mBank.ZHKH",
-            "Оплата услуг iBank.ZhKU",
-            "Оплата услуг iBank.ZHKH"
-        ].includes(lines[i])) {
-            let date = "";
-            let amount = 0;
-            for (let j = i - 1; j >= 0; j--) {
-                if (!date && /^\d{2}\.\d{2}\.\d{4}$/.test(lines[j])) date = lines[j];
-                if (amount === 0 && /^-\d[\d\s]*[.,]\d{2}$/.test(lines[j])) {
-                    amount = parseFloat(lines[j].replace(/\s/g, "").replace(",", "."));
+        const isUtilityLabel = utilityLabels.includes(lines[i]);
+        const isBankTransfer = /Внешний банковский/i.test(lines[i]);
+        if (!isUtilityLabel && !isBankTransfer) continue;
+
+        let date = "";
+        let amount = 0;
+        for (let j = i - 1; j >= Math.max(0, i - 12); j--) {
+            if (!date && /^\d{2}\.\d{2}\.\d{4}$/.test(lines[j])) date = lines[j];
+            if (amount === 0 && /^-\d[\d\s]*[.,]\d{2}(?:\s*₽)?$/.test(lines[j])) {
+                amount = parseFloat(lines[j].replace(/₽/g, "").replace(/\s/g, "").replace(",", "."));
+            }
+            if (date && amount !== 0) break;
+        }
+
+        let recipientAccount = "";
+        if (isBankTransfer) {
+            for (let j = i; j <= Math.min(lines.length - 1, i + 8); j++) {
+                const accountMatch = lines[j].match(/\b(\d{20})\b/);
+                if (accountMatch) {
+                    recipientAccount = accountMatch[1];
+                    break;
                 }
-                if (date && amount !== 0) break;
             }
-            if (date && amount !== 0) {
-                payments.push({
-                    date,
-                    description: lines[i],
-                    amount: Math.abs(amount),
-                    paid: true,
-                    month: getMonthName(date.split(".")[1]),
-                    year: Number(date.split(".")[2])
-                });
-            }
+        }
+
+        if (date && amount !== 0) {
+            payments.push({
+                date,
+                description: lines[i],
+                amount: Math.abs(amount),
+                paid: true,
+                month: getMonthName(date.split(".")[1]),
+                year: Number(date.split(".")[2]),
+                recipientAccount
+            });
         }
     }
     return payments;
@@ -84,20 +100,24 @@ function findUtilityPayments(text) {
 
 function parseMoney(value) {
     if (!value) return null;
-    const number = Number(value.replace(/\s/g, "").replace(",", "."));
+    const cleaned = String(value).replace(/₽/g, "").replace(/руб\.?/gi, "").replace(/\s/g, "").replace(",", ".");
+    const number = Number(cleaned);
     return Number.isFinite(number) ? number : null;
 }
 
 function findReceiptData(text) {
     const normalized = text.replace(/\u00a0/g, " ");
     const lines = normalized.split("\n").map(line => line.trim()).filter(Boolean);
-
     const accountNumber = findAccountNumber(normalized);
+
+    let recipientAccount = "";
+    const recipientMatches = [...normalized.matchAll(/(?:р\/?с|расч[её]тн(?:ый|ого)\s+сч[её]т)\s*[:№-]?\s*(\d{20})/gi)];
+    if (recipientMatches.length) recipientAccount = recipientMatches[0][1];
 
     let amount = null;
     const amountPatterns = [
-        /(?:итого\s+к\s+оплате|к\s+оплате|сумма\s+к\s+оплате|всего\s+к\s+оплате)\s*[:№-]?\s*([0-9][0-9\s]*[.,]\d{2})/i,
-        /(?:итого|всего)\s*[:№-]?\s*([0-9][0-9\s]*[.,]\d{2})\s*(?:₽|руб\.?)/i
+        /(?:итого\s+к\s+опл(?:ате|\.)?|к\s+оплате|сумма\s+к\s+оплате|всего\s+к\s+оплате)\s*[:№-]?\s*(-?\s*[0-9][0-9\s]*[.,]\d{2})/i,
+        /(?:итого|всего)\s*[:№-]?\s*(-?\s*[0-9][0-9\s]*[.,]\d{2})\s*(?:₽|руб\.?)/i
     ];
     for (const pattern of amountPatterns) {
         const match = normalized.match(pattern);
@@ -107,20 +127,36 @@ function findReceiptData(text) {
         }
     }
 
+    // В некоторых PDF заголовок и значение разбиты на разные строки.
+    // Ищем число рядом с заголовком «Итого к опл.» и сохраняем знак минус.
+    if (amount === null) {
+        const headingIndex = lines.findIndex(line => /итого\s+к\s+опл/i.test(line));
+        if (headingIndex >= 0) {
+            const nearby = lines.slice(Math.max(0, headingIndex - 8), Math.min(lines.length, headingIndex + 12));
+            const moneyLine = nearby.find(line => /^-?\s*\d[\d\s]*[.,]\d{2}$/.test(line));
+            if (moneyLine) amount = parseMoney(moneyLine);
+        }
+    }
+
     let period = "";
     let month = "";
     let year = null;
-    const periodPatterns = [
-        /(?:расч[её]тный\s+период|период)\s*[:№-]?\s*(0[1-9]|1[0-2])[.\/-](20\d{2})/i,
-        /(?:за)\s+(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])\s+(20\d{2})/i
+    const numericPatterns = [
+        /(?:расч[её]тный\s+период|период|месяц\s*,?\s*год)\s*[:№-]?\s*(0[1-9]|1[0-2])[.\/-](20\d{2})/i,
+        /\b(0[1-9]|1[0-2])[.\/-](20\d{2})\b/
     ];
-    const numericPeriod = normalized.match(periodPatterns[0]);
+    let numericPeriod = null;
+    for (const pattern of numericPatterns) {
+        numericPeriod = normalized.match(pattern);
+        if (numericPeriod) break;
+    }
+
     if (numericPeriod) {
         month = getMonthName(numericPeriod[1]);
         year = Number(numericPeriod[2]);
         period = `${numericPeriod[1]}.${numericPeriod[2]}`;
     } else {
-        const wordPeriod = normalized.match(periodPatterns[1]);
+        const wordPeriod = normalized.match(/(?:за)\s+(январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья])\s+(20\d{2})/i);
         if (wordPeriod) {
             const stem = wordPeriod[1].toLowerCase();
             const names = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
@@ -134,10 +170,12 @@ function findReceiptData(text) {
 
     return {
         accountNumber,
+        recipientAccount,
         amount,
         period,
         month,
         year,
+        noPaymentRequired: amount !== null && amount <= 0,
         lines
     };
 }
