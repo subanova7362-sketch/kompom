@@ -80,6 +80,7 @@ processPdfReceiptButton?.addEventListener("click", async function () {
         receipts.push(data);
         matchAllReceipts();
         renderReceipts();
+        updateMonths();
         updateSummary();
         pdfReceiptStatus.textContent = "✅ Квитанция успешно обработана";
         pdfReceiptInput.value = "";
@@ -105,22 +106,39 @@ function amountsEqual(a, b) {
 }
 
 function findMatchingPayment(receipt) {
-    if (receipt.amount === null || !receipt.month || !receipt.year) return null;
+    if (receipt.noPaymentRequired || receipt.amount === null || receipt.amount <= 0 || !receipt.month || !receipt.year) return null;
 
-    const receiptAccount = normalizeAccount(receipt.accountNumber);
-    const statementAccount = normalizeAccount(accountNumber);
+    const recipientAccount = normalizeAccount(receipt.recipientAccount);
 
-    if (receiptAccount && statementAccount && receiptAccount !== statementAccount) return null;
+    // Самое надёжное совпадение: расчётный счёт получателя + сумма.
+    if (recipientAccount) {
+        const exactRecipientMatch = payments.find(payment =>
+            normalizeAccount(payment.recipientAccount) === recipientAccount &&
+            amountsEqual(payment.amount, receipt.amount)
+        );
+        if (exactRecipientMatch) return exactRecipientMatch;
+    }
 
-    return payments.find(payment =>
-        payment.month === receipt.month &&
-        payment.year === receipt.year &&
-        amountsEqual(payment.amount, receipt.amount)
-    ) || null;
+    // Для банковских операций без доступного расчётного счёта используем сумму
+    // и допускаем оплату квитанции в следующем месяце после расчётного периода.
+    const receiptMonthIndex = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"].indexOf(receipt.month);
+    return payments.find(payment => {
+        if (!amountsEqual(payment.amount, receipt.amount)) return false;
+        const paymentMonthIndex = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"].indexOf(payment.month);
+        const receiptSerial = receipt.year * 12 + receiptMonthIndex;
+        const paymentSerial = payment.year * 12 + paymentMonthIndex;
+        return paymentSerial === receiptSerial || paymentSerial === receiptSerial + 1;
+    }) || null;
 }
 
 function matchAllReceipts() {
     receipts.forEach(receipt => {
+        if (receipt.noPaymentRequired || (receipt.amount !== null && receipt.amount <= 0)) {
+            receipt.paid = false;
+            receipt.noPaymentRequired = true;
+            receipt.matchedPayment = null;
+            return;
+        }
         const match = findMatchingPayment(receipt);
         receipt.paid = Boolean(match);
         receipt.matchedPayment = match || null;
@@ -140,12 +158,16 @@ function renderReceipts() {
         const account = receipt.accountNumber || "Не найден";
         const amount = receipt.amount !== null ? formatAmount(receipt.amount) : "Не найдена";
         const period = receipt.period || "Не найден";
-        const state = receipt.paid ? "✅ Оплачено" : "⏳ Ждёт оплаты";
+        let state = "⏳ Ждёт оплаты";
+        if (receipt.noPaymentRequired) state = "✅ Оплата не требуется / переплата";
+        else if (receipt.paid) state = "✅ Оплачено";
         const paymentDate = receipt.matchedPayment ? `<div>Дата оплаты: ${receipt.matchedPayment.date}</div>` : "";
+        const recipient = receipt.recipientAccount ? `<div>Расчётный счёт получателя: ${receipt.recipientAccount}</div>` : "";
 
         item.innerHTML = `
             <div><b>🧾 ${receipt.fileName || "Электронная квитанция"}</b></div>
             <div>Лицевой счёт: ${account}</div>
+            ${recipient}
             <div>Сумма к оплате: ${amount}</div>
             <div>Период: ${period}</div>
             <div><b>Статус: ${state}</b></div>
@@ -168,7 +190,7 @@ async function loadStatement() {
         const pdf = await loadPDF(selectedFile);
         const text = await extractPDFText(pdf);
         accountNumber = findAccountNumber(text);
-        payments.push(...findUtilityPayments(text));
+        payments = findUtilityPayments(text);
 
         if (payments.length > 0) currentYear = payments[0].year;
         accountBox.textContent = accountNumber || "Не найден";
@@ -199,8 +221,8 @@ function updateSummary() {
     paymentCount.textContent = currentPayments.length;
     totalAmount.textContent = formatAmount(currentPayments.reduce((sum, payment) => sum + payment.amount, 0));
 
-    const paidReceipts = currentReceipts.filter(receipt => receipt.paid && receipt.amount !== null);
-    const unpaidReceipts = currentReceipts.filter(receipt => !receipt.paid && receipt.amount !== null);
+    const paidReceipts = currentReceipts.filter(receipt => receipt.paid && receipt.amount !== null && receipt.amount > 0);
+    const unpaidReceipts = currentReceipts.filter(receipt => !receipt.paid && !receipt.noPaymentRequired && receipt.amount !== null && receipt.amount > 0);
 
     paidAmount.textContent = formatAmount(paidReceipts.reduce((sum, receipt) => sum + receipt.amount, 0));
     unpaidAmount.textContent = formatAmount(unpaidReceipts.reduce((sum, receipt) => sum + receipt.amount, 0));
@@ -280,7 +302,7 @@ function updateArchive() {
         total += payment.amount;
         const item = document.createElement("div");
         item.className = "archive-item";
-        item.innerHTML = `<div class="archive-title">📅 ${payment.date}</div><div>${payment.description}</div><div>💰 ${formatAmount(payment.amount)}</div>`;
+        item.innerHTML = `<div class="archive-title">📅 ${payment.date}</div><div>${payment.description}</div><div>💰 ${formatAmount(payment.amount)}</div>${payment.recipientAccount ? `<div>Счёт получателя: ${payment.recipientAccount}</div>` : ""}`;
         archiveList.appendChild(item);
     });
 
