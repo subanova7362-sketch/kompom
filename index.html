@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>
+
+        Коммунальный помощник
+
+    </title>
+
+    <link rel="stylesheet"
+          href="style.css">
+
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- =======================================================
+                        ШАПКА
+======================================================= -->
+
+<header class="header">
+
+    <h1>
+
+        🏠 Коммунальный помощник
+
+    </h1>
+
+</header>
+<!-- =======================================================
+                    НАСТРОЙКИ
+======================================================= -->
+
+<section class="settings-section">
+
+    <div class="section-header">
+
+        <h2>⚙️ Настройки</h2>
+
+        <button id="toggleSettingsButton"
+                class="toggle-button">
+
+            Скрыть
+
+        </button>
+
+    </div>
+
+    <div id="settingsContent"
+         class="settings-row">
+         
+
+        <div class="setting-card">
+
+            <div class="setting-icon">
+
+                🔔
+
+            </div>
+
+            <div class="setting-title">
+
+                Напоминания
+
+            </div>
+
+            <label class="switch">
+
+                <input
+                    type="checkbox"
+                    id="reminderSwitch"
+                    checked>
+
+                <span class="slider"></span>
+
+            </label>
+
+        </div>
+
+        <div class="setting-card">
+
+            <div class="setting-icon">
+
+                🌙
+
+            </div>
+
+            <div class="setting-title">
+
+                Тёмная тема
+
+            </div>
+
+            <label class="switch">
+
+                <input
+                    type="checkbox"
+                    id="themeSwitch">
+
+                <span class="slider"></span>
+
+            </label>
+
+        </div>
+
+        <div class="setting-card">
+
+            <div class="setting-icon">
+
+                🔤
+
+            </div>
+
+            <div class="setting-title">
+
+                Размер текста
+
+            </div>
+
+            <div class="font-buttons">
+
+                <button id="smallFont">
+
+                    A
+
+                </button>
+
+                <button id="normalFont">
+
+                    A+
+
+                </button>
+
+                <button id="bigFont">
+
+                    A++
+
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</section>
+<!-- =======================================================
+            ЗАГРУЗКА БАНКОВСКОЙ ВЫПИСКИ
+======================================================= -->
+
+<section class="upload-section">
+
+    <h2>
+
+        📄 Загрузка банковской выписки
+
+    </h2>
+
+    <input
+        type="file"
+        id="fileInput"
+        accept=".pdf">
+
+    <button id="loadButton">
+
+        📥 Загрузить выписку
+
+    </button>
+
+    <div id="status"
+         class="status">
+
+        Выписка не загружена
+
+    </div>
+
+</section>
+
+<!-- =======================================================
+                    КВИТАНЦИИ
+======================================================= -->
+
+<section class="receipt-section">
+
+    <h2>
+
+        🧾 Квитанции
+
+    </h2>
+
+    <div class="receipt-buttons">
+
+    <button id="paperReceiptButton">
+        📷 Бумажная квитанция
+    </button>
+
+    <button id="electronicReceiptButton">
+        📎 Электронная квитанция
+    </button>
+
+</div>
+
+    <div id="receiptList"
+         class="info-box">
+
+
+    </div>
+
+<div class="receipt-cards">
+
+    <div class="receipt-card" id="paperReceiptCard">
+
+        <h3>📷 Бумажная квитанция</h3>
+
+        <p>Сфотографируйте бумажную квитанцию.</p>
+
+        <button id="cameraReceiptButton">📷 Сделать фото</button>
+
+    </div>
+
+    <div class="receipt-card" id="electronicReceiptCard">
+
+        <h3>📎 Электронная квитанция</h3>
+
+        <p>Загрузите PDF-квитанцию.</p>
+
+        <button id="pdfReceiptButton">📎 Выбрать PDF</button>
+
+<button id="processPdfReceiptButton">
+
+    📄 Загрузить квитанцию
+</button>
+
+<div id="pdfReceiptStatus">
+
+    Квитанция не загружена
+
+</div>
+
+<input
+    type="file"
+    id="pdfReceiptInput"
+    accept=".pdf"
+    hidden
+>
+
+
+    </div>
+
+</div>
+
+</section>
+
+<!-- =======================================================
+                    ЛИЦЕВОЙ СЧЁТ
+======================================================= -->
+
+<section class="account-section">
+
+    <h2>
+
+        🧾 Лицевой счёт
+
+    </h2>
+
+    <div id="accountNumber"
+    
+         class="info-box">
+
+        Не найден
+
+    </div>
+
+</section>
+<!-- =======================================================
+                ПЛАТЕЖИ ПО МЕСЯЦАМ
+======================================================= -->
+
+<section class="months-section">
+
+    <h2>
+
+        📅 Платежи по месяцам
+
+    </h2>
+
+<div class="year-selector">
+
+    <label for="yearSelect">
+
+        Год:
+
+    </label>
+
+    <select id="yearSelect">
+
+        <option value="2026" selected>
+
+            2026
+
+        </option>
+
+    </select>
+
+</div>
+
+    <div id="monthsContainer"
+         class="months-container">
+
+        <button class="month-card active">
+
+            <div class="month-name">
+
+                Май
+
+            </div>
+
+            <div class="month-total">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+        <button class="month-card">
+
+            <div class="month-name">
+
+                Июнь
+
+            </div>
+
+            <div class="month-total">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+        <button class="month-card">
+
+            <div class="month-name">
+
+                Июль
+
+            </div>
+
+            <div class="month-total">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+    </div>
+
+</section>
+<!-- =======================================================
+                        ИТОГИ
+======================================================= -->
+
+<section class="summary-section">
+
+    <h2>
+
+        💰 Итоги
+
+    </h2>
+
+    <div class="summary-grid">
+
+        <button class="summary-card active"
+                id="paymentCountCard">
+
+            <div class="summary-title">
+
+                Найдено платежей
+
+            </div>
+
+            <div class="summary-value"
+                 id="paymentCount">
+
+                0
+
+            </div>
+
+        </button>
+
+        <button class="summary-card"
+                id="totalAmountCard">
+
+            <div class="summary-title">
+
+               Всего оплачено
+
+            </div>
+
+            <div class="summary-value"
+                 id="totalAmount">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+        <button class="summary-card"
+                id="paidAmountCard">
+
+            <div class="summary-title">
+
+                Ждет оплаты
+
+            </div>
+
+            <div class="summary-value"
+                 id="paidAmount">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+        <button class="summary-card"
+                id="unpaidAmountCard">
+
+            <div class="summary-title">
+
+                Не оплачено
+
+            </div>
+
+            <div class="summary-value"
+                 id="unpaidAmount">
+
+                0 ₽
+
+            </div>
+
+        </button>
+
+    </div>
+
+</section>
+<!-- =======================================================
+                    АРХИВ ВЫПИСОК
+======================================================= -->
+
+<section class="history-section">
+
+    
+<div class="section-header">
+
+    <h2>
+
+        📂 Архив выписок
+
+    </h2>
+
+    <button id="toggleArchiveButton"
+            class="toggle-button">
+
+        Скрыть
+
+    </button>
+
+</div>
+
+<div id="archiveContent">
+
+    <div id="archiveList">
+
+        <div class="archive-empty">
+
+            Выписок пока нет
+
+        </div>
+    </div>
+    </div>
+</section>
+
+</div>
+
+<!-- =======================================================
+                ПОДКЛЮЧЕНИЕ PDF.JS
+======================================================= -->
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+<!-- =======================================================
+                JAVASCRIPT ПРОЕКТА
+======================================================= -->
+
+<script src="parser.js"></script>
+<script src="settings.js"></script>
+<script src="archive.js"></script>
+<script src="ui.js"></script>
+<script src="script.js"></script>
+
+</body>
+
+</html>
