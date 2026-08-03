@@ -21,6 +21,7 @@ const monthsContainer = document.getElementById("monthsContainer");
 const yearSelect = document.getElementById("yearSelect");
 const archiveList = document.getElementById("archiveList");
 const receiptList = document.getElementById("receiptList");
+const electronicReceiptButton = document.getElementById("electronicReceiptButton");
 const pdfReceiptButton = document.getElementById("pdfReceiptButton");
 const pdfReceiptInput = document.getElementById("pdfReceiptInput");
 const processPdfReceiptButton = document.getElementById("processPdfReceiptButton");
@@ -48,13 +49,13 @@ pdfReceiptButton?.addEventListener("click", () => pdfReceiptInput?.click());
 pdfReceiptInput?.addEventListener("change", function () {
     const file = this.files[0]; if (!file) return;
     if (file.type !== "application/pdf") { alert("Пожалуйста, выберите PDF-квитанцию."); this.value = ""; pdfReceiptStatus.textContent = "Выбран неверный файл."; return; }
-    pdfReceiptStatus.innerHTML = `📄 <b>Электронная квитанция</b><br>${file.name}`;
+    pdfReceiptStatus.textContent = "📄 Квитанция выбрана";
 });
 
 processPdfReceiptButton?.addEventListener("click", async function () {
     const file = pdfReceiptInput?.files[0];
     if (!file) { alert("Сначала выберите PDF-квитанцию."); return; }
-    pdfReceiptStatus.innerHTML = "⏳ Квитанция обрабатывается...<br><small>Чтение PDF...</small>";
+    pdfReceiptStatus.textContent = "⏳ Квитанция обрабатывается...";
     try {
         const data = await loadReceiptPDF(file);
         data.fileName = file.name; data.id = `${Date.now()}-${Math.random()}`;
@@ -95,20 +96,25 @@ function matchAllReceipts() {
 }
 
 function renderReceipts() {
-    if (receipts.length === 0) { receiptList.textContent = "Квитанций пока нет"; return; }
-    receiptList.innerHTML = "";
-    receipts.forEach(receipt => {
-        const item = document.createElement("div"); item.className = "receipt-result";
-        const account = receipt.accountNumber || "Не найден";
-        const amount = receipt.amount !== null ? formatAmount(receipt.amount) : "Не найдена";
-        const period = receipt.period || "Не найден";
-        let state = "⏳ Ждёт оплаты";
-        if (receipt.noPaymentRequired) state = "✅ Оплата не требуется / переплата"; else if (receipt.paid) state = "✅ Оплачено";
-        const paymentDate = receipt.matchedPayment ? `<div>Дата оплаты: ${receipt.matchedPayment.date}</div>` : "";
-        const recipient = receipt.recipientAccount ? `<div>Расчётный счёт получателя: ${receipt.recipientAccount}</div>` : "";
-        item.innerHTML = `<div><b>🧾 ${receipt.fileName || "Электронная квитанция"}</b></div><div>Лицевой счёт: ${account}</div>${recipient}<div>Сумма к оплате: ${amount}</div><div>Период: ${period}</div><div><b>Статус: ${state}</b></div>${paymentDate}`;
-        receiptList.appendChild(item);
-    });
+    // Распознанные реквизиты остаются внутри программы и больше не выводятся отдельной колонкой.
+    if (receiptList) receiptList.style.display = "none";
+    if (!electronicReceiptButton) return;
+    electronicReceiptButton.classList.remove("receipt-ok", "receipt-wait");
+    if (receipts.length === 0) {
+        electronicReceiptButton.innerHTML = "📎 Электронная квитанция";
+        return;
+    }
+    const receipt = receipts[receipts.length - 1];
+    if (receipt.noPaymentRequired) {
+        electronicReceiptButton.innerHTML = "✅ Квитанция загружена<br><span>Оплата не требуется</span>";
+        electronicReceiptButton.classList.add("receipt-ok");
+    } else if (receipt.paid) {
+        electronicReceiptButton.innerHTML = "✅ Квитанция загружена<br><span>Оплачено</span>";
+        electronicReceiptButton.classList.add("receipt-ok");
+    } else {
+        electronicReceiptButton.innerHTML = "⚠️ Квитанция загружена<br><span>Ожидает оплаты</span>";
+        electronicReceiptButton.classList.add("receipt-wait");
+    }
 }
 
 loadButton?.addEventListener("click", loadStatement);
