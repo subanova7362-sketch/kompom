@@ -2,17 +2,65 @@
 
 console.log("✅ parser.js подключен");
 
+const PDFJS_WORKER_SRC = window.PDFJS_WORKER_SRC || "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+class PDFReadError extends Error {
+    constructor(code, message, cause) {
+        super(message);
+        this.name = "PDFReadError";
+        this.code = code;
+        this.cause = cause;
+    }
+}
+
+function assertPDFJSLoaded() {
+    if (!window.pdfjsLib || typeof window.pdfjsLib.getDocument !== "function") {
+        throw new PDFReadError("PDFJS_NOT_LOADED", "PDF.js не загрузился.");
+    }
+    if (!window.pdfjsLib.GlobalWorkerOptions) {
+        throw new PDFReadError("PDFJS_NOT_LOADED", "PDF.js загрузился некорректно: недоступны настройки worker.");
+    }
+}
+
+function configurePDFJSWorker() {
+    if (window.pdfjsLib?.GlobalWorkerOptions) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_SRC;
+    }
+}
+
+function isWorkerLoadError(error) {
+    const message = String(error?.message || error || "").toLowerCase();
+    return message.includes("worker") || message.includes("setting up fake worker") || message.includes("failed to fetch dynamically imported module");
+}
+
+configurePDFJSWorker();
+
 async function loadPDF(file) {
-    const arrayBuffer = await file.arrayBuffer();
-    return await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    assertPDFJSLoaded();
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        return await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    } catch (error) {
+        if (isWorkerLoadError(error)) {
+            throw new PDFReadError("PDFJS_WORKER_NOT_LOADED", "Worker PDF.js не загрузился.", error);
+        }
+        throw new PDFReadError("PDF_OPEN_FAILED", "PDF-файл не удалось открыть.", error);
+    }
 }
 
 async function extractPDFText(pdf) {
     let text = "";
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        text += content.items.map(item => item.str).join("\n") + "\n";
+    try {
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            const page = await pdf.getPage(pageNumber);
+            const content = await page.getTextContent();
+            text += content.items.map(item => item.str).join("\n") + "\n";
+        }
+    } catch (error) {
+        throw new PDFReadError("PDF_TEXT_EXTRACTION_FAILED", "PDF открылся, но текст извлечь не удалось.", error);
+    }
+    if (!text.trim()) {
+        throw new PDFReadError("PDF_TEXT_EXTRACTION_FAILED", "PDF открылся, но текст извлечь не удалось.");
     }
     return text;
 }

@@ -60,8 +60,17 @@ processPdfReceiptButton?.addEventListener("click", async function () {
         data.fileName = file.name; data.id = `${Date.now()}-${Math.random()}`;
         receipts.push(data); matchAllReceipts(); renderReceipts(); updateMonths(); updateSummary();
         pdfReceiptStatus.textContent = "✅ Квитанция успешно обработана"; pdfReceiptInput.value = "";
-    } catch (error) { console.error("Ошибка обработки квитанции:", error); pdfReceiptStatus.textContent = "❌ Не удалось обработать квитанцию."; }
+    } catch (error) {
+        console.error("Ошибка обработки квитанции:", error);
+        pdfReceiptStatus.textContent = `❌ ${getPDFErrorMessage(error, "Не удалось обработать квитанцию.")}`;
+    }
 });
+
+
+function getPDFErrorMessage(error, fallbackMessage) {
+    if (error instanceof PDFReadError) return error.message;
+    return error?.message || fallbackMessage;
+}
 
 async function loadReceiptPDF(file) { const pdf = await loadPDF(file); const text = await extractPDFText(pdf); return findReceiptData(text); }
 function normalizeAccount(value) { return String(value || "").replace(/\D/g, ""); }
@@ -123,7 +132,10 @@ async function loadStatement() {
         accountBox.textContent = bankAccountNumber || "Не найден";
         matchAllReceipts(); renderReceipts(); updateMonths(); updateSummary(); updateArchive();
         status.textContent = "✅ Выписка успешно обработана."; fileInput.value = ""; selectedFile = null;
-    } catch (error) { console.error("Ошибка чтения выписки:", error); status.textContent = "❌ Ошибка чтения PDF."; }
+    } catch (error) {
+        console.error("Ошибка чтения выписки:", error);
+        status.textContent = `❌ ${getPDFErrorMessage(error, "Не удалось прочитать PDF-выписку.")}`;
+    }
 }
 
 function getCurrentReceipts() { return receipts.filter(receipt => receipt.month === currentMonth && receipt.year === currentYear); }
