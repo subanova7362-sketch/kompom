@@ -96,9 +96,10 @@ function findMatchingPayment(receipt) {
 function matchAllReceipts() {
     receipts.forEach(receipt => {
         if (receipt.noPaymentRequired || (receipt.amount !== null && receipt.amount <= 0)) {
-            receipt.paid = false; receipt.noPaymentRequired = true; receipt.matchedPayment = null; return;
+            receipt.paid = false; receipt.noPaymentRequired = true; receipt.status = "Оплата не требуется"; receipt.matchedPayment = null; return;
         }
-        const match = findMatchingPayment(receipt); receipt.paid = Boolean(match); receipt.matchedPayment = match || null;
+        receipt.noPaymentRequired = false;
+        const match = findMatchingPayment(receipt); receipt.paid = Boolean(match); receipt.status = receipt.paid ? "Оплачено" : "Ждёт оплаты"; receipt.matchedPayment = match || null;
     });
 }
 
@@ -116,7 +117,7 @@ function renderReceipts() {
         electronicReceiptButton.innerHTML = `✅ Квитанция загружена<br><span>Оплачено${periodText ? ` · ${periodText}` : ""}</span>`;
         electronicReceiptButton.classList.add("receipt-ok");
     } else {
-        electronicReceiptButton.innerHTML = `⚠️ Квитанция загружена<br><span>Ожидает оплаты${periodText ? ` · ${periodText}` : ""}</span>`;
+        electronicReceiptButton.innerHTML = `⚠️ Квитанция загружена<br><span>Ждёт оплаты${periodText ? ` · ${periodText}` : ""}</span>`;
         electronicReceiptButton.classList.add("receipt-wait");
     }
 }

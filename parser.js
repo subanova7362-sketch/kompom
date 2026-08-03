@@ -88,7 +88,7 @@ function parseMoney(value) {
 
 function extractReceiptAmount(normalized, lines) {
     const label = /(?:итого\s+к\s+оплате|сумма\s+к\s+оплате|всего\s+к\s+оплате|к\s+оплате\s+за\s+расч[её]тный\s+период|к\s+оплате)/i;
-    const moneyToken = /-?\s*\d{1,3}(?:[ \u00a0]\d{3})*(?:[.,]\d{1,2})|-?\s*\d+[.,]\d{1,2}|-?\s*\d+/;
+    const moneyToken = /-?\s*\d{1,3}(?:[ \u00a0]\d{3})*[.,]\d{2}|-?\s*\d+[.,]\d{2}/;
 
     // Сначала ищем сумму рядом с подписью. Между подписью и числом PDF может вставить
     // «руб.», двоеточие, переносы строк и другие подписи таблицы.
@@ -110,7 +110,7 @@ function extractReceiptAmount(normalized, lines) {
             for (const index of [headingIndex + distance, headingIndex - distance]) {
                 if (index < 0 || index >= lines.length) continue;
                 const line = lines[index].replace(/\s*(?:₽|руб(?:лей|ля|ль|\.)?)\s*$/i, "").trim();
-                if (!/^-?\s*\d[\d\s]*(?:[.,]\d{1,2})?$/.test(line)) continue;
+                if (!/^-?\s*\d[\d\s]*[.,]\d{2}$/.test(line)) continue;
                 const value = parseMoney(line);
                 if (value !== null && Math.abs(value) < 1000000) return value;
             }
@@ -161,11 +161,14 @@ function findReceiptData(text) {
     // Отрицательная сумма означает переплату/нулевую необходимость оплаты.
     if (amount === null && /Т\s*Плюс|СЧЕТ-КВИТАНЦИЯ/i.test(normalized)) {
         const top = lines.slice(0, Math.min(lines.length, 180));
-        const candidates = top.map(line => ({ line, value: parseMoney(line) })).filter(item => /^-?\s*\d[\d\s]*[.,]\d{1,2}\s*(?:₽|руб\.?)?$/.test(item.line) && item.value !== null && Math.abs(item.value) < 1000000);
+        const candidates = top.map(line => ({ line, value: parseMoney(line) })).filter(item => /^-?\s*\d[\d\s]*[.,]\d{2}\s*(?:₽|руб\.?)?$/.test(item.line) && item.value !== null && Math.abs(item.value) < 1000000);
         const negative = candidates.find(item => item.value < 0);
         if (negative) amount = negative.value;
         else if (candidates.length) amount = candidates[candidates.length - 1].value;
     }
 
-    return {accountNumber, recipientAccount, amount, period, month, year, noPaymentRequired: amount !== null && amount <= 0, lines};
+    const noPaymentRequired = amount !== null && amount <= 0;
+    const status = noPaymentRequired ? "Оплата не требуется" : (amount !== null && amount > 0 ? "Ждёт оплаты" : "");
+
+    return {accountNumber, recipientAccount, amount, period, month, year, noPaymentRequired, status, lines};
 }
