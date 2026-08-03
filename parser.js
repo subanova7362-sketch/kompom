@@ -137,24 +137,38 @@ function findReceiptData(text) {
         if (match) { amount = parseMoney(match[1]); if (amount !== null) break; }
     }
 
-    // В таблицах PDF значение может находиться не рядом с заголовком в текстовом потоке.
-    // Для Т Плюс выбираем денежное значение из верхней части квитанции, ближайшее к полям шапки.
+    // В PDF-таблицах заголовок «Итого к оплате» и сама сумма часто идут отдельными строками.
+    // Берём ближайшее денежное значение к этому заголовку, а не требуем, чтобы кандидат был единственным.
     if (amount === null) {
-        const headerIndexes = lines.map((line, i) => /итого\s+к\s+опл/i.test(line) ? i : -1).filter(i => i >= 0);
+        const headerIndexes = lines.map((line, i) => /(?:итого\s+к\s+опл|сумма\s+к\s+оплате|всего\s+к\s+оплате)/i.test(line) ? i : -1).filter(i => i >= 0);
         for (const headingIndex of headerIndexes) {
-            const nearby = lines.slice(Math.max(0, headingIndex - 20), Math.min(lines.length, headingIndex + 30));
-            const candidates = nearby.map(line => ({line, value: parseMoney(line)})).filter(item => /^-?\s*\d[\d\s]*[.,]\d{2}$/.test(item.line) && item.value !== null);
-            const negative = candidates.find(item => item.value < 0);
-            if (negative) { amount = negative.value; break; }
-            if (candidates.length === 1) { amount = candidates[0].value; break; }
+            const candidates = [];
+            for (let distance = 1; distance <= 24; distance++) {
+                for (const index of [headingIndex + distance, headingIndex - distance]) {
+                    if (index < 0 || index >= lines.length) continue;
+                    const line = lines[index];
+                    if (!/^-?\s*\d[\d\s]*[.,]\d{2}(?:\s*(?:₽|руб\.?))?$/.test(line)) continue;
+                    const value = parseMoney(line);
+                    if (value !== null) candidates.push({ value, distance });
+                }
+                if (candidates.length) break;
+            }
+            if (candidates.length) { amount = candidates[0].value; break; }
         }
     }
 
-    // Дополнительный вариант для счёт-квитанций: отрицательный итог в верхней части страницы.
+    // Для счёт-квитанций дополнительно ищем отдельную строку суммы в верхней части документа.
     if (amount === null && /Т\s*Плюс|СЧЕТ-КВИТАНЦИЯ/i.test(normalized)) {
-        const top = lines.slice(0, Math.min(lines.length, 140));
-        const negativeMoney = top.map(line => ({line, value: parseMoney(line)})).find(item => /^-\s*\d[\d\s]*[.,]\d{2}$/.test(item.line) && item.value < 0);
+        const top = lines.slice(0, Math.min(lines.length, 160));
+        const moneyCandidates = top
+            .map((line, index) => ({ line, index, value: parseMoney(line) }))
+            .filter(item => /^-?\s*\d[\d\s]*[.,]\d{2}(?:\s*(?:₽|руб\.?))?$/.test(item.line) && item.value !== null);
+        const negativeMoney = moneyCandidates.find(item => item.value < 0);
         if (negativeMoney) amount = negativeMoney.value;
+        else if (moneyCandidates.length) {
+            // Положительная новая квитанция: предпочитаем последнее итоговое значение в шапке.
+            amount = moneyCandidates[moneyCandidates.length - 1].value;
+        }
     }
 
     return {accountNumber, recipientAccount, amount, period, month, year, noPaymentRequired: amount !== null && amount <= 0, lines};
