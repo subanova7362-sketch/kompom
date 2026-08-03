@@ -17,9 +17,7 @@ async function extractPDFText(pdf) {
     return text;
 }
 
-function cleanDigits(value) {
-    return String(value || "").replace(/\D/g, "");
-}
+function cleanDigits(value) { return String(value || "").replace(/\D/g, ""); }
 
 function findAccountNumber(text) {
     const normalized = String(text || "").replace(/\u00a0/g, " ");
@@ -28,10 +26,7 @@ function findAccountNumber(text) {
         /Л\/С\s*(?:№|N)?\s*[:№-]?\s*([0-9][0-9\s-]{5,24})/i,
         /Лицевой\s*[:№-]\s*([0-9][0-9\s-]{5,24})/i
     ];
-    for (const pattern of patterns) {
-        const match = normalized.match(pattern);
-        if (match) return cleanDigits(match[1]);
-    }
+    for (const pattern of patterns) { const match = normalized.match(pattern); if (match) return cleanDigits(match[1]); }
     const lines = normalized.split("\n").map(line => line.trim()).filter(Boolean);
     const index = lines.findIndex(line => /^Лицевой\s+сч[её]т$/i.test(line));
     if (index >= 0) {
@@ -86,9 +81,42 @@ function findUtilityPayments(text) {
 
 function parseMoney(value) {
     if (value === null || value === undefined || value === "") return null;
-    const cleaned = String(value).replace(/[−–—]/g, "-").replace(/₽/g, "").replace(/руб\.?/gi, "").replace(/\s/g, "").replace(",", ".");
+    const cleaned = String(value).replace(/[−–—]/g, "-").replace(/₽/g, "").replace(/руб(?:лей|ля|ль|\.)?/gi, "").replace(/\s/g, "").replace(",", ".");
     const number = Number(cleaned);
     return Number.isFinite(number) ? number : null;
+}
+
+function extractReceiptAmount(normalized, lines) {
+    const label = /(?:итого\s+к\s+оплате|сумма\s+к\s+оплате|всего\s+к\s+оплате|к\s+оплате\s+за\s+расч[её]тный\s+период|к\s+оплате)/i;
+    const moneyToken = /-?\s*\d{1,3}(?:[ \u00a0]\d{3})*(?:[.,]\d{1,2})|-?\s*\d+[.,]\d{1,2}|-?\s*\d+/;
+
+    // Сначала ищем сумму рядом с подписью. Между подписью и числом PDF может вставить
+    // «руб.», двоеточие, переносы строк и другие подписи таблицы.
+    const labelMatches = [...normalized.matchAll(new RegExp(label.source, "gi"))];
+    for (const match of labelMatches) {
+        const after = normalized.slice(match.index + match[0].length, match.index + match[0].length + 180);
+        const cleanedAfter = after.replace(/^\s*[,;:.\-–—]*\s*(?:руб(?:лей|ля|ль|\.)?|₽)?\s*[:=]?\s*/i, "");
+        const amountMatch = cleanedAfter.match(moneyToken);
+        if (amountMatch) {
+            const value = parseMoney(amountMatch[0]);
+            if (value !== null && Math.abs(value) < 1000000) return value;
+        }
+    }
+
+    // Затем ищем ближайшую отдельную денежную строку около подписи.
+    const headerIndexes = lines.map((line, i) => label.test(line) ? i : -1).filter(i => i >= 0);
+    for (const headingIndex of headerIndexes) {
+        for (let distance = 1; distance <= 35; distance++) {
+            for (const index of [headingIndex + distance, headingIndex - distance]) {
+                if (index < 0 || index >= lines.length) continue;
+                const line = lines[index].replace(/\s*(?:₽|руб(?:лей|ля|ль|\.)?)\s*$/i, "").trim();
+                if (!/^-?\s*\d[\d\s]*(?:[.,]\d{1,2})?$/.test(line)) continue;
+                const value = parseMoney(line);
+                if (value !== null && Math.abs(value) < 1000000) return value;
+            }
+        }
+    }
+    return null;
 }
 
 function findReceiptData(text) {
@@ -123,52 +151,20 @@ function findReceiptData(text) {
             const names = ["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
             const stems = ["январ","феврал","март","апрел","ма","июн","июл","август","сентябр","октябр","ноябр","декабр"];
             const index = stems.findIndex(item => stem.startsWith(item));
-            if (index >= 0) month = names[index]; year = Number(wordPeriod[2]); period = `${month} ${year}`.trim();
+            if (index >= 0) { month = names[index]; year = Number(wordPeriod[2]); period = `${month} ${year}`; }
         }
     }
 
-    let amount = null;
-    const amountPatterns = [
-        /(?:итого\s+к\s+опл(?:ате|\.)?|к\s+оплате|сумма\s+к\s+оплате|всего\s+к\s+оплате)\s*[:№-]?\s*(-?\s*[0-9][0-9\s]*[.,]\d{2})/i,
-        /(?:итого|всего)\s*[:№-]?\s*(-?\s*[0-9][0-9\s]*[.,]\d{2})\s*(?:₽|руб\.?)/i
-    ];
-    for (const pattern of amountPatterns) {
-        const match = normalized.match(pattern);
-        if (match) { amount = parseMoney(match[1]); if (amount !== null) break; }
-    }
+    let amount = extractReceiptAmount(normalized, lines);
 
-    // В PDF-таблицах заголовок «Итого к оплате» и сама сумма часто идут отдельными строками.
-    // Берём ближайшее денежное значение к этому заголовку, а не требуем, чтобы кандидат был единственным.
-    if (amount === null) {
-        const headerIndexes = lines.map((line, i) => /(?:итого\s+к\s+опл|сумма\s+к\s+оплате|всего\s+к\s+оплате)/i.test(line) ? i : -1).filter(i => i >= 0);
-        for (const headingIndex of headerIndexes) {
-            const candidates = [];
-            for (let distance = 1; distance <= 24; distance++) {
-                for (const index of [headingIndex + distance, headingIndex - distance]) {
-                    if (index < 0 || index >= lines.length) continue;
-                    const line = lines[index];
-                    if (!/^-?\s*\d[\d\s]*[.,]\d{2}(?:\s*(?:₽|руб\.?))?$/.test(line)) continue;
-                    const value = parseMoney(line);
-                    if (value !== null) candidates.push({ value, distance });
-                }
-                if (candidates.length) break;
-            }
-            if (candidates.length) { amount = candidates[0].value; break; }
-        }
-    }
-
-    // Для счёт-квитанций дополнительно ищем отдельную строку суммы в верхней части документа.
+    // Запасной вариант для счёт-квитанций: отдельные денежные значения в верхней части.
+    // Отрицательная сумма означает переплату/нулевую необходимость оплаты.
     if (amount === null && /Т\s*Плюс|СЧЕТ-КВИТАНЦИЯ/i.test(normalized)) {
-        const top = lines.slice(0, Math.min(lines.length, 160));
-        const moneyCandidates = top
-            .map((line, index) => ({ line, index, value: parseMoney(line) }))
-            .filter(item => /^-?\s*\d[\d\s]*[.,]\d{2}(?:\s*(?:₽|руб\.?))?$/.test(item.line) && item.value !== null);
-        const negativeMoney = moneyCandidates.find(item => item.value < 0);
-        if (negativeMoney) amount = negativeMoney.value;
-        else if (moneyCandidates.length) {
-            // Положительная новая квитанция: предпочитаем последнее итоговое значение в шапке.
-            amount = moneyCandidates[moneyCandidates.length - 1].value;
-        }
+        const top = lines.slice(0, Math.min(lines.length, 180));
+        const candidates = top.map(line => ({ line, value: parseMoney(line) })).filter(item => /^-?\s*\d[\d\s]*[.,]\d{1,2}\s*(?:₽|руб\.?)?$/.test(item.line) && item.value !== null && Math.abs(item.value) < 1000000);
+        const negative = candidates.find(item => item.value < 0);
+        if (negative) amount = negative.value;
+        else if (candidates.length) amount = candidates[candidates.length - 1].value;
     }
 
     return {accountNumber, recipientAccount, amount, period, month, year, noPaymentRequired: amount !== null && amount <= 0, lines};
